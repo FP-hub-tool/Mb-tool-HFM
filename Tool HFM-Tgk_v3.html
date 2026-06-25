@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPS-MB Reporting Hub</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css" />
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; color: #333; line-height: 1.5; }
+        .navbar { background: #1e3a8a; display: flex; padding: 0 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 100; }
+        .nav-logo { color: white; display: flex; align-items: center; font-weight: 700; margin-right: 30px; font-size: 1.1em; }
+        .nav-tab { background: none; border: none; color: #93c5fd; padding: 20px; font-size: 0.9em; font-weight: 600; cursor: pointer; border-bottom: 4px solid transparent; transition: 0.3s; }
+        .nav-tab:hover { color: white; background: rgba(255,255,255,0.05); }
+        .nav-tab.active { color: white; border-bottom-color: #10b981; background: rgba(255,255,255,0.1); }
+        
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
+        .tool-page { background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 25px; display: none; }
+        .tool-page.active { display: block; }
+        .page-header { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }
+        
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #475569; font-size: 0.9em; }
+        input[type="file"] { width: 100%; padding: 10px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; cursor: pointer; margin-bottom: 15px; }
+        
+        .checklist-container { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 20px; display: none; }
+        .checklist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; padding: 5px; }
+        .check-item { display: flex; align-items: center; background: white; padding: 8px 12px; border-radius: 4px; border: 1px solid #e2e8f0; cursor: pointer; font-size: 0.85em; }
+        .check-item input { margin-right: 10px; }
+        
+        .btn-small { background: #e2e8f0; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-size: 0.75em; cursor: pointer; font-weight: 600; margin-right: 5px; }
+        .btn { width: 100%; color: white; border: none; padding: 14px; font-size: 1em; font-weight: 600; border-radius: 6px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn:disabled { background: #cbd5e1 !important; cursor: not-allowed; }
+        
+        .log-container { background: #1e293b; color: #f8fafc; border-radius: 6px; padding: 15px; max-height: 350px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; margin-top: 20px; white-space: pre-wrap; border: 1px solid #334155; }
+    </style>
+    
+    <script>
+        function cambiaTab(event, tabId) {
+            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tool-page').forEach(page => page.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+    </script>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-logo">💼 MPS-MB HUB</div>
+    <button class="nav-tab active" onclick="cambiaTab(event, 'tabAttivo')">📂 1. SP Attivo</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabPassivo')">📂 2. SP Passivo</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabCE')">📂 3. CE</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabParteE')">📂 4. Parte E</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabFinrep')">📂 5. FINREP</button>
+</nav>
+
+<div class="container">
+    <div id="tabAttivo" class="tool-page active">
+        <div class="page-header"><h2>📂 SP Attivo Processor</h2><p>Elaborazione dati SP A - segni positivi [inverso Tagetik]</p></div>
+        <label>Mappa Conti Attivo</label><input type="file" id="mappa1" accept=".xlsx" py-change="handle_preview_1">
+        <label>Saldi Consolidati</label><input type="file" id="saldi1" accept=".xlsx" py-change="handle_saldi_1">
+        <label>Template HFM Attivo</label><input type="file" id="temp1" accept=".xlsx">
+        <div id="panel1" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" py-click="sel_tutti_1">☑ Tutti</button><button class="btn-small" py-click="sel_nessuno_1">☐ Nessuno</button></div>
+            <div id="grid1" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn1" style="background:#2563eb;" py-click="run_attivo">▶ Avvia Elaborazione Attivo</button>
+    </div>
+
+    <div id="tabPassivo" class="tool-page">
+        <div class="page-header"><h2>📂 SP Passivo Processor</h2><p>Elaborazione dati SP P - segni negativi [inverso Tagetik]</p></div>
+        <label>Mappa Conti Passivo</label><input type="file" id="mappa2" accept=".xlsx" py-change="handle_preview_2">
+        <label>Saldi Consolidati</label><input type="file" id="saldi2" accept=".xlsx" py-change="handle_saldi_2">
+        <label>Template HFM Passivo</label><input type="file" id="temp2" accept=".xlsx">
+        <div id="panel2" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" py-click="sel_tutti_2">☑ Tutti</button><button class="btn-small" py-click="sel_nessuno_2">☐ Nessuno</button></div>
+            <div id="grid2" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn2" style="background:#7c3aed;" py-click="run_passivo">▶ Avvia Elaborazione Passivo</button>
+    </div>
+
+    <div id="tabCE" class="tool-page">
+        <div class="page-header"><h2>📂 CE Processor</h2><p>Elaborazione dati CE - segni positivi [netto schema CE = Tagetik]</p></div>
+        <label>Mappa Conti CE</label><input type="file" id="mappa3" accept=".xlsx" py-change="handle_preview_3">
+        <label>Saldi Consolidati</label><input type="file" id="saldi3" accept=".xlsx" py-change="handle_saldi_3">
+        <label>Template HFM CE</label><input type="file" id="temp3" accept=".xlsx">
+        <div id="panel3" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" py-click="sel_tutti_3">☑ Tutti</button><button class="btn-small" py-click="sel_nessuno_3">☐ Nessuno</button></div>
+            <div id="grid3" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn3" style="background:#ea053b;" py-click="run_ce">▶ Avvia Elaborazione CE</button>
+    </div>
+
+    <div id="tabParteE" class="tool-page">
+        <div class="page-header"><h2>📂 Parte E Processor</h2><p>Elaborazione dati Parte E - segni positivi [inverso Tagetik]</p></div>
+        <label>Mappa Conti Parte E</label><input type="file" id="mappa4" accept=".xlsx" py-change="handle_preview_4">
+        <label>Saldi Consolidati</label><input type="file" id="saldi4" accept=".xlsx" py-change="handle_saldi_4">
+        <label>Template HFM Parte E</label><input type="file" id="temp4" accept=".xlsx">
+        <div id="panel4" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" py-click="sel_tutti_4">☑ Tutti</button><button class="btn-small" py-click="sel_nessuno_4">☐ Nessuno</button></div>
+            <div id="grid4" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn4" style="background:#84cc16;" py-click="run_partee">▶ Avvia Elaborazione Parte E</button>
+    </div>
+
+    <div id="tabFinrep" class="tool-page">
+        <div class="page-header"><h2>📂 FINREP Processor</h2><p>Elaborazione dati FinRep - segni ITS</p></div>
+        <label>Mappa Conti FINREP</label><input type="file" id="mappa5" accept=".xlsx" py-change="handle_preview_5">
+        <label>Saldi Consolidati</label><input type="file" id="saldi5" accept=".xlsx" py-change="handle_saldi_5">
+        <label>Template HFM FINREP</label><input type="file" id="temp5" accept=".xlsx">
+        <div id="panel5" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" py-click="sel_tutti_5">☑ Tutti</button><button class="btn-small" py-click="sel_nessuno_5">☐ Nessuno</button></div>
+            <div id="grid5" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn5" style="background:#1e3a8a;" py-click="run_finrep">▶ Avvia Elaborazione FINREP</button>
+    </div>
+
+    <div class="log-container" id="logContainer">In attesa dell'avvio del sistema...</div>
+</div>
+
+<py-config>
+    packages = ["pandas", "openpyxl"]
+</py-config>
+
+<py-script>
+import io
+import datetime
+import pandas as pd
+import openpyxl
+import js
+from pyscript import document
+
+# --- UTILITIES E PULIZIA DATI ---
+def stampa_log(m):
+    l = document.querySelector("#logContainer")
+    if "attesa" in l.innerText:
+        l.innerText = m + "\n"
+    else:
+        l.innerText += m + "\n"
+    l.scrollTop = l.scrollHeight
+
+async def get_f(id):
+    el = document.getElementById(id)
+    if not el or len(el.files) == 0:
+        return None
+    buf = await el.files.item(0).arrayBuffer()
+    return io.BytesIO(bytes(js.Uint8Array.new(buf)))
+
+# Funzione per estrarre colonne in sicurezza evitando i KeyError
+def safe_col(df, col_names):
+    if isinstance(col_names, str): 
+        col_names = [col_names]
+    for c in col_names:
+        if c in df.columns: 
+            return df[c]
+    return pd.Series([''] * len(df))
+
+# Pulizia Codici Conto e Destinazioni (Rimuove gli zeri decimali ed i "nan" testuali di Pandas)
+def clean_c(s):
+    res = s.fillna('').astype(str).str.strip().str.upper()
+    res = res.replace(['NAN', 'NONE', 'NAT', 'NULL'], '')
+    res = res.str.replace(r'\.0$', '', regex=True)
+    return res
+
+# Pulizia Nomi File e Nomi Fogli (NON rimuove i decimali per salvaguardare 1.10)
+def clean_n(s):
+    res = s.fillna('').astype(str).str.strip().str.upper()
+    res = res.replace(['NAN', 'NONE', 'NAT', 'NULL'], '')
+    return res
+
+async def push_zip(z, prefix):
+    now = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    nome_zip = f"{prefix}_{now}.zip"
+    
+    o = js.Object.new()
+    o.type = "blob"
+    b = await z.generateAsync(o)
+    a = js.document.createElement("a")
+    a.href = js.URL.createObjectURL(b)
+    a.download = nome_zip
+    js.document.body.appendChild(a)
+    a.click()
+    js.document.body.removeChild(a)
+
+stampa_log("Sistema Caricato ✅. Pronto per elaborare.")
+
+# --- GENERATORE CHECKLIST ---
+async def make_chk(m_id, p_id, g_id, c_cls):
+    try:
+        st = await get_f(m_id)
+        if not st: return
+        df = pd.read_excel(st, dtype=str)
+        df.columns = [str(c).upper().strip() for c in df.columns]
+        
+        col_data = safe_col(df, ['OUTPUT SHEET', 'OUTPUT_SHEET'])
+        f_list = clean_n(col_data).str.replace('_IC', '', case=False)
+        unique_files = sorted([x for x in f_list.unique() if x != ''])
+        
+        document.getElementById(g_id).innerHTML = "".join([f'<label class="check-item"><input type="checkbox" class="{c_cls}" value="{x}" checked><span>{x}.xlsx</span></label>' for x in unique_files])
+        document.getElementById(p_id).style.display = "block"
+        stampa_log(f"Checklist pronta: {len(unique_files)} file intercettati.")
+    except Exception as e:
+        stampa_log(f"Errore Checklist: {e}")
+
+async def handle_preview_1(e): await make_chk("mappa1", "panel1", "grid1", "chk1")
+async def handle_preview_2(e): await make_chk("mappa2", "panel2", "grid2", "chk2")
+async def handle_preview_3(e): await make_chk("mappa3", "panel3", "grid3", "chk3")
+async def handle_preview_4(e): await make_chk("mappa4", "panel4", "grid4", "chk4")
+async def handle_preview_5(e): await make_chk("mappa5", "panel5", "grid5", "chk5")
+
+def sel_tutti_1(e): 
+    for x in document.querySelectorAll(".chk1"): x.checked = True
+def sel_nessuno_1(e): 
+    for x in document.querySelectorAll(".chk1"): x.checked = False
+def sel_tutti_2(e): 
+    for x in document.querySelectorAll(".chk2"): x.checked = True
+def sel_nessuno_2(e): 
+    for x in document.querySelectorAll(".chk2"): x.checked = False
+def sel_tutti_3(e): 
+    for x in document.querySelectorAll(".chk3"): x.checked = True
+def sel_nessuno_3(e): 
+    for x in document.querySelectorAll(".chk3"): x.checked = False
+def sel_tutti_4(e): 
+    for x in document.querySelectorAll(".chk4"): x.checked = True
+def sel_nessuno_4(e): 
+    for x in document.querySelectorAll(".chk4"): x.checked = False
+def sel_tutti_5(e): 
+    for x in document.querySelectorAll(".chk5"): x.checked = True
+def sel_nessuno_5(e): 
+    for x in document.querySelectorAll(".chk5"): x.checked = False
+
+# --- VALIDAZIONE ISTANTANEA FILE SALDI ---
+# --- VALIDAZIONE ISTANTANEA FILE SALDI ---
+async def validate_saldi(file_id, nome_blocco, codice_atteso):
+    try:
+        st = await get_f(file_id)
+        if not st: 
+            return
+            
+        # Leggiamo SENZA intestazione (header=None) e SOLO la Colonna A (usecols=[0])
+        df_check = pd.read_excel(st, header=None, usecols=[0]) 
+        
+        # Controlliamo che il file abbia almeno 2 righe
+        if len(df_check) > 1:
+            # Estraiamo il valore della cella A2 (indice 1 in Pandas)
+            valore_a2 = str(df_check.iloc[1, 0]).strip()
+            
+            # Estraiamo il valore dell'ULTIMA riga della colonna A (indice -1 in Pandas)
+            valore_ultima = str(df_check.iloc[-1, 0]).strip()
+            
+            errori = []
+            if valore_a2 != codice_atteso:
+                errori.append(f"la cella A2 è '{valore_a2}'")
+            if valore_ultima != codice_atteso:
+                errori.append(f"l'ultima riga è '{valore_ultima}'")
+                
+            if errori:
+                messaggio = " e ".join(errori)
+                stampa_log(f"⚠️ ERRORE ({nome_blocco}): {messaggio}. Ci si aspettava '{codice_atteso}'!")
+            else:
+                stampa_log(f"✅ ({nome_blocco}): File Saldi corretto (A2 e ultima riga ok per {codice_atteso}).")
+        else:
+            stampa_log(f"⚠️ ERRORE ({nome_blocco}): Il file non contiene abbastanza righe per effettuare il controllo!")
+            
+    except Exception as e:
+        stampa_log(f"❌ Errore durante la lettura di verifica in {nome_blocco}: {e}")
+
+# Qui associamo il codice atteso corretto ad ogni blocco
+async def handle_saldi_1(e): await validate_saldi("saldi1", "Attivo", "CONS2026_FSC_MP")
+async def handle_saldi_2(e): await validate_saldi("saldi2", "Passivo", "CONS2026_FSC_MP")
+async def handle_saldi_3(e): await validate_saldi("saldi3", "CE", "CONS2026_FSC_MP")
+async def handle_saldi_4(e): await validate_saldi("saldi4", "Parte E", "CONS2026_FSP_MP")
+async def handle_saldi_5(e): await validate_saldi("saldi5", "FINREP", "CONS2026_FSP_MP")
+
+
+# --- BLOCCO 1: ATTIVO ---
+async def run_attivo(e):
+    b = document.getElementById("btn1")
+    b.disabled = True
+    stampa_log("🚀 Avvio Tool ATTIVO...")
+    try:
+        m_s = await get_f("mappa1")
+        s_s = await get_f("saldi1")
+        t_s = await get_f("temp1")
+        
+        if not m_s or not s_s or not t_s:
+            stampa_log("❌ File mancanti!")
+            b.disabled = False
+            return
+            
+        dm = pd.read_excel(m_s, dtype=str)
+        ds = pd.read_excel(s_s, dtype=str)
+        tb = t_s.getvalue()
+        
+        dm.columns = [str(c).upper().strip() for c in dm.columns]
+        ds.columns = [str(c).upper().strip() for c in ds.columns]
+        
+        df_saldi = pd.DataFrame({
+            'c': clean_c(safe_col(ds, 'CONTO')), 
+            'v': pd.to_numeric(safe_col(ds, 'IMPORTO IN VALUTA DI CONSO'), errors='coerce').fillna(0), 
+            'ctp': clean_n(safe_col(ds, 'LEGAL ENTITIES CTP')), 
+            'd2': clean_c(safe_col(ds, ['DEST2', 'DEST 2'])), 
+            'd3': clean_c(safe_col(ds, ['DEST3', 'DEST 3'])), 
+            'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
+            'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
+        })
+        
+        df_mappa = pd.DataFrame({
+            'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
+            'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
+            'C': pd.to_numeric(safe_col(dm, 'COLONNA'), errors='coerce').fillna(0).astype(int), 
+            'FD': clean_n(safe_col(dm, ['OUTPUT SHEET', 'OUTPUT_SHEET'])).str.replace('_IC', '', case=False), 
+            'LI': clean_n(safe_col(dm, ['LORDO IC', 'LORDO_IC'])), 
+            'c': clean_c(safe_col(dm, 'CONTO')), 
+            'd2': clean_c(safe_col(dm, ['DEST 2', 'DEST2'])), 
+            'd3': clean_c(safe_col(dm, ['DEST 3', 'DEST3'])), 
+            'd4': clean_c(safe_col(dm, ['DEST 4', 'DEST4'])), 
+            'd5': clean_c(safe_col(dm, ['DEST 5', 'DEST5']))
+        })
+        
+        l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        l['T'] = 'LORDO'
+        
+        i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        i['T'] = 'IC'
+        
+        ff = pd.concat([l, i])
+        ff['VF'] = ff['v'].abs().round(2)
+        
+        sel = [x.value for x in document.querySelectorAll(".chk1") if x.checked]
+        
+        # Filtro per le celle compilabili correttamente
+        ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
+        
+        if ff.empty:
+            stampa_log("⚠️ Nessun valore incrociato tra i file per la compilazione. Il file ZIP generato sarà vuoto.")
+        
+        jz = js.JSZip.new()
+        folder = jz.folder("OUTPUT_ATTIVO")
+        
+        for target in sorted(ff['FD'].unique()):
+            wb = openpyxl.load_workbook(io.BytesIO(tb))
+            sub = ff[ff['FD'] == target]
+            rs = {str(s).strip().upper(): s for s in wb.sheetnames}
+            keep = set()
+            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    n = rs[base]
+                    keep.add(n)
+                    if r['T'] == 'IC':
+                        nic = f"{n}_IC"
+                        keep.add(nic)
+                        if nic not in wb.sheetnames:
+                            wb.copy_worksheet(wb[n]).title = nic
+                            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
+                    if t_sh in wb.sheetnames:
+                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
+                    
+            for s in list(wb.sheetnames):
+                if s not in keep and len(wb.sheetnames) > 1:
+                    wb.remove(wb[s])
+                    
+            buf = io.BytesIO()
+            wb.save(buf)
+            folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
+            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            
+        await push_zip(jz, "OUTPUT_ATTIVO")
+        stampa_log("✅ Attivo Completato.")
+    except Exception as ex: 
+        stampa_log(f"❌ Errore Attivo: {ex}")
+    finally: 
+        b.disabled = False
+
+
+# --- BLOCCO 2: PASSIVO ---
+async def run_passivo(e):
+    b = document.getElementById("btn2")
+    b.disabled = True
+    stampa_log("🚀 Avvio Tool PASSIVO...")
+    try:
+        m_s = await get_f("mappa2")
+        s_s = await get_f("saldi2")
+        t_s = await get_f("temp2")
+        
+        if not m_s or not s_s or not t_s:
+            stampa_log("❌ File mancanti!")
+            b.disabled = False
+            return
+            
+        dm = pd.read_excel(m_s, dtype=str)
+        ds = pd.read_excel(s_s, dtype=str)
+        tb = t_s.getvalue()
+        
+        dm.columns = [str(c).upper().strip() for c in dm.columns]
+        ds.columns = [str(c).upper().strip() for c in ds.columns]
+        
+        df_saldi = pd.DataFrame({
+            'c': clean_c(safe_col(ds, 'CONTO')), 
+            'v': pd.to_numeric(safe_col(ds, 'IMPORTO IN VALUTA DI CONSO'), errors='coerce').fillna(0), 
+            'ctp': clean_n(safe_col(ds, 'LEGAL ENTITIES CTP')), 
+            'd2': clean_c(safe_col(ds, ['DEST2', 'DEST 2'])), 
+            'd3': clean_c(safe_col(ds, ['DEST3', 'DEST 3'])), 
+            'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
+            'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
+        })
+        
+        df_mappa = pd.DataFrame({
+            'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
+            'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
+            'C': pd.to_numeric(safe_col(dm, 'COLONNA'), errors='coerce').fillna(0).astype(int), 
+            'FD': clean_n(safe_col(dm, ['OUTPUT SHEET', 'OUTPUT_SHEET'])).str.replace('_IC', '', case=False), 
+            'LI': clean_n(safe_col(dm, ['LORDO IC', 'LORDO_IC'])), 
+            'c': clean_c(safe_col(dm, 'CONTO')), 
+            'd2': clean_c(safe_col(dm, ['DEST 2', 'DEST2'])), 
+            'd3': clean_c(safe_col(dm, ['DEST 3', 'DEST3'])), 
+            'd4': clean_c(safe_col(dm, ['DEST 4', 'DEST4'])), 
+            'd5': clean_c(safe_col(dm, ['DEST 5', 'DEST5']))
+        })
+        
+        l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        l['T'] = 'LORDO'
+        
+        i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        i['T'] = 'IC'
+        
+        ff = pd.concat([l, i])
+        ff['VF'] = ff['v'].apply(lambda x: x*-1 if x < 0 else x).round(2)
+        
+        sel = [x.value for x in document.querySelectorAll(".chk2") if x.checked]
+        ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
+        
+        if ff.empty:
+            stampa_log("⚠️ Nessun dato da incrociare trovato.")
+            
+        jz = js.JSZip.new()
+        folder = jz.folder("OUTPUT_PASSIVO")
+        
+        for target in sorted(ff['FD'].unique()):
+            wb = openpyxl.load_workbook(io.BytesIO(tb))
+            sub = ff[ff['FD'] == target]
+            rs = {str(s).strip().upper(): s for s in wb.sheetnames}
+            keep = set()
+            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    n = rs[base]
+                    keep.add(n)
+                    if r['T'] == 'IC':
+                        nic = f"{n}_IC"
+                        keep.add(nic)
+                        if nic not in wb.sheetnames:
+                            wb.copy_worksheet(wb[n]).title = nic
+                            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
+                    if t_sh in wb.sheetnames:
+                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
+                    
+            for s in list(wb.sheetnames):
+                if s not in keep and len(wb.sheetnames) > 1:
+                    wb.remove(wb[s])
+                    
+            buf = io.BytesIO()
+            wb.save(buf)
+            folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
+            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            
+        await push_zip(jz, "OUTPUT_PASSIVO")
+        stampa_log("✅ Passivo Completato.")
+    except Exception as ex: 
+        stampa_log(f"❌ Errore Passivo: {ex}")
+    finally: 
+        b.disabled = False
+
+# --- BLOCCO 3: CE ---
+async def run_ce(e):
+    b = document.getElementById("btn3")
+    b.disabled = True
+    stampa_log("🚀 Avvio Tool CE...")
+    try:
+        m_s = await get_f("mappa3")
+        s_s = await get_f("saldi3")
+        t_s = await get_f("temp3")
+        
+        if not m_s or not s_s or not t_s:
+            stampa_log("❌ File mancanti!")
+            b.disabled = False
+            return
+            
+        dm = pd.read_excel(m_s, dtype=str)
+        ds = pd.read_excel(s_s, dtype=str)
+        tb = t_s.getvalue()
+        
+        dm.columns = [str(c).upper().strip() for c in dm.columns]
+        ds.columns = [str(c).upper().strip() for c in ds.columns]
+        
+        df_saldi = pd.DataFrame({
+            'c': clean_c(safe_col(ds, 'CONTO')), 
+            'v': pd.to_numeric(safe_col(ds, 'IMPORTO IN VALUTA DI CONSO'), errors='coerce').fillna(0), 
+            'ctp': clean_n(safe_col(ds, 'LEGAL ENTITIES CTP')), 
+            'd2': clean_c(safe_col(ds, ['DEST2', 'DEST 2'])), 
+            'd3': clean_c(safe_col(ds, ['DEST3', 'DEST 3'])), 
+            'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
+            'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
+        })
+        
+        df_mappa = pd.DataFrame({
+            'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
+            'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
+            'C': pd.to_numeric(safe_col(dm, 'COLONNA'), errors='coerce').fillna(0).astype(int), 
+            'FD': clean_n(safe_col(dm, ['OUTPUT SHEET', 'OUTPUT_SHEET'])).str.replace('_IC', '', case=False), 
+            'LI': clean_n(safe_col(dm, ['LORDO IC', 'LORDO_IC'])), 
+            'c': clean_c(safe_col(dm, 'CONTO')), 
+            'd2': clean_c(safe_col(dm, ['DEST 2', 'DEST2'])), 
+            'd3': clean_c(safe_col(dm, ['DEST 3', 'DEST3'])), 
+            'd4': clean_c(safe_col(dm, ['DEST 4', 'DEST4'])), 
+            'd5': clean_c(safe_col(dm, ['DEST 5', 'DEST5']))
+        })
+        
+        l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        l['T'] = 'LORDO'
+        
+        i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        i['T'] = 'IC'
+        
+        ff = pd.concat([l, i])
+        
+        # --- NUOVA LOGICA DEI SEGNI ---
+        ff['VF'] = ff['v'].abs().round(2)
+        mask_schema = ff['FD'].str.contains('SCHEMA CONTO ECONOMICO', case=False, na=False)
+        ff.loc[mask_schema, 'VF'] = ff.loc[mask_schema, 'v'].round(2)
+        # ------------------------------
+        
+        sel = [x.value for x in document.querySelectorAll(".chk3") if x.checked]
+        ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
+        
+        if ff.empty:
+            stampa_log("⚠️ Nessun dato da incrociare trovato.")
+            
+        jz = js.JSZip.new()
+        folder = jz.folder("OUTPUT_CE")
+        
+        for target in sorted(ff['FD'].unique()):
+            wb = openpyxl.load_workbook(io.BytesIO(tb))
+            sub = ff[ff['FD'] == target]
+            rs = {str(s).strip().upper(): s for s in wb.sheetnames}
+            keep = set()
+            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    n = rs[base]
+                    keep.add(n)
+                    if r['T'] == 'IC':
+                        nic = f"{n}_IC"
+                        keep.add(nic)
+                        if nic not in wb.sheetnames:
+                            wb.copy_worksheet(wb[n]).title = nic
+                            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
+                    if t_sh in wb.sheetnames:
+                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
+                    
+            for s in list(wb.sheetnames):
+                if s not in keep and len(wb.sheetnames) > 1:
+                    wb.remove(wb[s])
+                    
+            buf = io.BytesIO()
+            wb.save(buf)
+            folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
+            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            
+        await push_zip(jz, "OUTPUT_CE")
+        stampa_log("✅ CE Completato.")
+    except Exception as ex: 
+        stampa_log(f"❌ Errore CE: {ex}")
+    finally: 
+        b.disabled = False
+        
+# --- BLOCCO 4: PARTE E ---
+async def run_partee(e):
+    b = document.getElementById("btn4")
+    b.disabled = True
+    stampa_log("🚀 Avvio Tool PARTE E...")
+    try:
+        m_s = await get_f("mappa4")
+        s_s = await get_f("saldi4")
+        t_s = await get_f("temp4")
+        
+        if not m_s or not s_s or not t_s:
+            stampa_log("❌ File mancanti!")
+            b.disabled = False
+            return
+            
+        dm = pd.read_excel(m_s, dtype=str)
+        ds = pd.read_excel(s_s, dtype=str)
+        tb = t_s.getvalue()
+        
+        dm.columns = [str(c).upper().strip() for c in dm.columns]
+        ds.columns = [str(c).upper().strip() for c in ds.columns]
+        
+        df_saldi = pd.DataFrame({
+            'c': clean_c(safe_col(ds, 'CONTO')), 
+            'v': pd.to_numeric(safe_col(ds, 'IMPORTO IN VALUTA DI CONSO'), errors='coerce').fillna(0), 
+            'ctp': clean_n(safe_col(ds, 'LEGAL ENTITIES CTP')), 
+            'd2': clean_c(safe_col(ds, ['DEST2', 'DEST 2'])), 
+            'd3': clean_c(safe_col(ds, ['DEST3', 'DEST 3'])), 
+            'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
+            'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
+        })
+        
+        df_mappa = pd.DataFrame({
+            'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
+            'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
+            'C': pd.to_numeric(safe_col(dm, 'COLONNA'), errors='coerce').fillna(0).astype(int), 
+            'FD': clean_n(safe_col(dm, ['OUTPUT SHEET', 'OUTPUT_SHEET'])).str.replace('_IC', '', case=False), 
+            'LI': clean_n(safe_col(dm, ['LORDO IC', 'LORDO_IC'])), 
+            'c': clean_c(safe_col(dm, 'CONTO')), 
+            'd2': clean_c(safe_col(dm, ['DEST 2', 'DEST2'])), 
+            'd3': clean_c(safe_col(dm, ['DEST 3', 'DEST3'])), 
+            'd4': clean_c(safe_col(dm, ['DEST 4', 'DEST4'])), 
+            'd5': clean_c(safe_col(dm, ['DEST 5', 'DEST5']))
+        })
+        
+        l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        l['T'] = 'LORDO'
+        
+        i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
+        i['T'] = 'IC'
+        
+        ff = pd.concat([l, i])
+        ff['VF'] = ff['v'].abs().round(2)
+        
+        sel = [x.value for x in document.querySelectorAll(".chk4") if x.checked]
+        ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
+        
+        if ff.empty:
+            stampa_log("⚠️ Nessun dato da incrociare trovato.")
+            
+        jz = js.JSZip.new()
+        folder = jz.folder("OUTPUT_PARTE_E")
+        
+        for target in sorted(ff['FD'].unique()):
+            wb = openpyxl.load_workbook(io.BytesIO(tb))
+            sub = ff[ff['FD'] == target]
+            rs = {str(s).strip().upper(): s for s in wb.sheetnames}
+            keep = set()
+            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    n = rs[base]
+                    keep.add(n)
+                    if r['T'] == 'IC':
+                        nic = f"{n}_IC"
+                        keep.add(nic)
+                        if nic not in wb.sheetnames:
+                            wb.copy_worksheet(wb[n]).title = nic
+                            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
+                    if t_sh in wb.sheetnames:
+                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
+                    
+            for s in list(wb.sheetnames):
+                if s not in keep and len(wb.sheetnames) > 1:
+                    wb.remove(wb[s])
+                    
+            buf = io.BytesIO()
+            wb.save(buf)
+            folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
+            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            
+        await push_zip(jz, "OUTPUT_PARTE_E")
+        stampa_log("✅ Parte E Completata.")
+    except Exception as ex: 
+        stampa_log(f"❌ Errore Parte E: {ex}")
+    finally: 
+        b.disabled = False
+
+# --- BLOCCO 5: FINREP ---
+async def run_finrep(e):
+    b = document.getElementById("btn5")
+    b.disabled = True
+    stampa_log("🚀 Avvio Tool FINREP...")
+    try:
+        m_s = await get_f("mappa5")
+        s_s = await get_f("saldi5")
+        t_s = await get_f("temp5")
+        
+        if not m_s or not s_s or not t_s:
+            stampa_log("❌ File mancanti!")
+            b.disabled = False
+            return
+            
+        dm = pd.read_excel(m_s, dtype=str)
+        ds = pd.read_excel(s_s, dtype=str)
+        tb = t_s.getvalue()
+        
+        dm.columns = [str(c).upper().strip() for c in dm.columns]
+        ds.columns = [str(c).upper().strip() for c in ds.columns]
+        
+        df_saldi = pd.DataFrame({
+            'c': clean_c(safe_col(ds, 'CONTO')), 
+            'v': pd.to_numeric(safe_col(ds, 'IMPORTO IN VALUTA DI CONSO'), errors='coerce').fillna(0), 
+            'ctp': clean_n(safe_col(ds, 'LEGAL ENTITIES CTP')), 
+            'd2': clean_c(safe_col(ds, ['DEST2', 'DEST 2'])), 
+            'd3': clean_c(safe_col(ds, ['DEST3', 'DEST 3'])), 
+            'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
+            'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
+        })
+        
+        df_mappa = pd.DataFrame({
+            'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
+            'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
+            'C': pd.to_numeric(safe_col(dm, 'COLONNA'), errors='coerce').fillna(0).astype(int), 
+            'FD': clean_n(safe_col(dm, ['OUTPUT SHEET', 'OUTPUT_SHEET'])).str.replace('_IC', '', case=False), 
+            'LI': clean_n(safe_col(dm, ['LORDO IC', 'LORDO_IC'])), 
+            'SIGN': clean_n(safe_col(dm, 'SEGNO_HFM')), 
+            'c': clean_c(safe_col(dm, 'CONTO')), 
+            'd2': clean_c(safe_col(dm, ['DEST 2', 'DEST2'])), 
+            'd3': clean_c(safe_col(dm, ['DEST 3', 'DEST3'])), 
+            'd4': clean_c(safe_col(dm, ['DEST 4', 'DEST4'])), 
+            'd5': clean_c(safe_col(dm, ['DEST 5', 'DEST5']))
+        })
+        
+        l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD','SIGN']).agg({'v':'sum'}).reset_index()
+        l['T'] = 'LORDO'
+        
+        i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD','SIGN']).agg({'v':'sum'}).reset_index()
+        i['T'] = 'IC'
+        
+        ff = pd.concat([l, i])
+        
+        def f_sign(r):
+            s, v = r['SIGN'], r['v']
+            if s == '+': base_val = abs(v)
+            elif s == '-': base_val = abs(v) * -1
+            else: base_val = v
+            
+            if str(r['FD']).upper().strip() == 'F_14' and (5 <= int(r['R']) <= 15) and (7 <= int(r['C']) <= 13):
+                return base_val * -1
+                
+            return base_val
+            
+        ff['VF'] = ff.apply(f_sign, axis=1).round(2)
+        
+        sel = [x.value for x in document.querySelectorAll(".chk5") if x.checked]
+        ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
+        
+        if ff.empty:
+            stampa_log("⚠️ Nessun dato da incrociare trovato.")
+            
+        jz = js.JSZip.new()
+        folder = jz.folder("OUTPUT_FINREP")
+        
+        for target in sorted(ff['FD'].unique()):
+            wb = openpyxl.load_workbook(io.BytesIO(tb))
+            sub = ff[ff['FD'] == target]
+            rs = {str(s).strip().upper(): s for s in wb.sheetnames}
+            keep = set()
+            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    n = rs[base]
+                    keep.add(n)
+                    if r['T'] == 'IC':
+                        nic = f"{n}_IC"
+                        keep.add(nic)
+                        if nic not in wb.sheetnames:
+                            wb.copy_worksheet(wb[n]).title = nic
+                            
+            for _, r in sub.iterrows():
+                base = str(r['TS']).upper()
+                if base in rs:
+                    t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
+                    if t_sh in wb.sheetnames:
+                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
+                    
+            for s in list(wb.sheetnames):
+                if s not in keep and len(wb.sheetnames) > 1:
+                    wb.remove(wb[s])
+                    
+            buf = io.BytesIO()
+            wb.save(buf)
+            folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
+            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            
+        await push_zip(jz, "OUTPUT_FINREP")
+        stampa_log("✅ FINREP Completato.")
+    except Exception as ex: 
+        stampa_log(f"❌ Errore FINREP: {ex}")
+    finally: 
+        b.disabled = False
+
+</py-script>
+
+</body>
+</html>
