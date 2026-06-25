@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPS-MB Reporting Hub</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; color: #333; line-height: 1.5; }
+        .navbar { background: #1e3a8a; display: flex; padding: 0 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 100; }
+        .nav-logo { color: white; display: flex; align-items: center; font-weight: 700; margin-right: 30px; font-size: 1.1em; }
+        .nav-tab { background: none; border: none; color: #93c5fd; padding: 20px; font-size: 0.9em; font-weight: 600; cursor: pointer; border-bottom: 4px solid transparent; transition: 0.3s; }
+        .nav-tab:hover { color: white; background: rgba(255,255,255,0.05); }
+        .nav-tab.active { color: white; border-bottom-color: #10b981; background: rgba(255,255,255,0.1); }
+        
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
+        .tool-page { background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 25px; display: none; }
+        .tool-page.active { display: block; }
+        .page-header { margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }
+        
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #475569; font-size: 0.9em; }
+        input[type="file"] { width: 100%; padding: 10px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; cursor: pointer; margin-bottom: 15px; }
+        
+        .checklist-container { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 20px; display: none; }
+        .checklist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; padding: 5px; }
+        .check-item { display: flex; align-items: center; background: white; padding: 8px 12px; border-radius: 4px; border: 1px solid #e2e8f0; cursor: pointer; font-size: 0.85em; }
+        .check-item input { margin-right: 10px; }
+        
+        .btn-small { background: #e2e8f0; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-size: 0.75em; cursor: pointer; font-weight: 600; margin-right: 5px; }
+        .btn { width: 100%; color: white; border: none; padding: 14px; font-size: 1em; font-weight: 600; border-radius: 6px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn:disabled { background: #cbd5e1 !important; cursor: not-allowed; }
+        
+        .log-container { background: #1e293b; color: #f8fafc; border-radius: 6px; padding: 15px; max-height: 350px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; margin-top: 20px; white-space: pre-wrap; border: 1px solid #334155; }
+    </style>
+    
+    <script>
+        function cambiaTab(event, tabId) {
+            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tool-page').forEach(page => page.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+    </script>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-logo">💼 MPS-MB HUB</div>
+    <button class="nav-tab active" onclick="cambiaTab(event, 'tabAttivo')">📂 1. SP Attivo</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabPassivo')">📂 2. SP Passivo</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabCE')">📂 3. CE</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabParteE')">📂 4. Parte E</button>
+    <button class="nav-tab" onclick="cambiaTab(event, 'tabFinrep')">📂 5. FINREP</button>
+</nav>
+
+<div class="container">
+    <div id="tabAttivo" class="tool-page active">
+        <div class="page-header"><h2>📂 SP Attivo Processor</h2><p>Elaborazione dati SP A - segni positivi [inverso Tagetik]</p></div>
+        <label>Mappa Conti Attivo</label><input type="file" id="mappa1" accept=".xlsx" onchange="handle_preview_1()">
+        <label>Saldi Consolidati</label><input type="file" id="saldi1" accept=".xlsx" onchange="handle_saldi_1()">
+        <label>Template HFM Attivo</label><input type="file" id="temp1" accept=".xlsx">
+        <div id="panel1" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" onclick="sel_tutti_1()">☑ Tutti</button><button class="btn-small" onclick="sel_nessuno_1()">☐ Nessuno</button></div>
+            <div id="grid1" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn1" style="background:#2563eb;" onclick="run_attivo()">▶ Avvia Elaborazione Attivo</button>
+    </div>
+
+    <div id="tabPassivo" class="tool-page">
+        <div class="page-header"><h2>📂 SP Passivo Processor</h2><p>Elaborazione dati SP P - segni negativi [inverso Tagetik]</p></div>
+        <label>Mappa Conti Passivo</label><input type="file" id="mappa2" accept=".xlsx" onchange="handle_preview_2()">
+        <label>Saldi Consolidati</label><input type="file" id="saldi2" accept=".xlsx" onchange="handle_saldi_2()">
+        <label>Template HFM Passivo</label><input type="file" id="temp2" accept=".xlsx">
+        <div id="panel2" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" onclick="sel_tutti_2()">☑ Tutti</button><button class="btn-small" onclick="sel_nessuno_2">☐ Nessuno</button></div>
+            <div id="grid2" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn2" style="background:#7c3aed;" onclick="run_passivo()">▶ Avvia Elaborazione Passivo</button>
+    </div>
+
+    <div id="tabCE" class="tool-page">
+        <div class="page-header"><h2>📂 CE Processor</h2><p>Elaborazione dati CE - segni positivi [netto schema CE = Tagetik]</p></div>
+        <label>Mappa Conti CE</label><input type="file" id="mappa3" accept=".xlsx" onchange="handle_preview_3()">
+        <label>Saldi Consolidati</label><input type="file" id="saldi3" accept=".xlsx" onchange="handle_saldi_3()">
+        <label>Template HFM CE</label><input type="file" id="temp3" accept=".xlsx">
+        <div id="panel3" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" onclick="sel_tutti_3()">☑ Tutti</button><button class="btn-small" onclick="sel_nessuno_3">☐ Nessuno</button></div>
+            <div id="grid3" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn3" style="background:#ea053b;" onclick="run_ce()">▶ Avvia Elaborazione CE</button>
+    </div>
+
+    <div id="tabParteE" class="tool-page">
+        <div class="page-header"><h2>📂 Parte E Processor</h2><p>Elaborazione dati Parte E - segni positivi [inverso Tagetik]</p></div>
+        <label>Mappa Conti Parte E</label><input type="file" id="mappa4" accept=".xlsx" onchange="handle_preview_4()">
+        <label>Saldi Consolidati</label><input type="file" id="saldi4" accept=".xlsx" onchange="handle_saldi_4()">
+        <label>Template HFM Parte E</label><input type="file" id="temp4" accept=".xlsx">
+        <div id="panel4" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" onclick="sel_tutti_4()">☑ Tutti</button><button class="btn-small" onclick="sel_nessuno_4">☐ Nessuno</button></div>
+            <div id="grid4" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn4" style="background:#84cc16;" onclick="run_partee()">▶ Avvia Elaborazione Parte E</button>
+    </div>
+
+    <div id="tabFinrep" class="tool-page">
+        <div class="page-header"><h2>📂 FINREP Processor</h2><p>Elaborazione dati FinRep - segni ITS</p></div>
+        <label>Mappa Conti FINREP</label><input type="file" id="mappa5" accept=".xlsx" onchange="handle_preview_5()">
+        <label>Saldi Consolidati</label><input type="file" id="saldi5" accept=".xlsx" onchange="handle_saldi_5()">
+        <label>Template HFM FINREP</label><input type="file" id="temp5" accept=".xlsx">
+        <div id="panel5" class="checklist-container">
+            <div style="margin-bottom:10px;"><button class="btn-small" onclick="sel_tutti_5">☑ Tutti</button><button class="btn-small" onclick="sel_nessuno_5">☐ Nessuno</button></div>
+            <div id="grid5" class="checklist-grid"></div>
+        </div>
+        <button class="btn" id="btn5" style="background:#1e3a8a;" onclick="run_finrep()">▶ Avvia Elaborazione FINREP</button>
+    </div>
+
+    <div class="log-container" id="logContainer">Sistema Caricato ✅. Pronto per elaborare (Motore Ultraveloce JS).</div>
+</div>
+
+<script>
+// --- UTILITIES E PULIZIA DATI ---
+function stampa_log(m) {
+    let l = document.querySelector("#logContainer");
+    if (l.innerText.includes("Caricato")) {
+        l.innerText = m + "\n";
+    } else {
+        l.innerText += m + "\n";
+    }
+    l.scrollTop = l.scrollHeight;
+}
+
+async function parseExcelFile(id) {
+    let el = document.getElementById(id);
+    if (!el || el.files.length === 0) return null;
+    let data = await el.files[0].arrayBuffer();
+    return XLSX.read(data, {type: 'array'});
+}
+
+async function getFileBuffer(id) {
+    let el = document.getElementById(id);
+    if (!el || el.files.length === 0) return null;
+    return await el.files[0].arrayBuffer();
+}
+
+function clean_c(val) {
+    if (val === undefined || val === null) return '';
+    let s = String(val).trim().toUpperCase();
+    if (['NAN', 'NONE', 'NAT', 'NULL'].includes(s)) return '';
+    return s.replace(/\.0$/, '');
+}
+
+function clean_n(val) {
+    if (val === undefined || val === null) return '';
+    let s = String(val).trim().toUpperCase();
+    if (['NAN', 'NONE', 'NAT', 'NULL'].includes(s)) return '';
+    return s;
+}
+
+function copyWorksheet(wb, sourceName, targetName) {
+    let sourceSheet = wb.Sheets[sourceName];
+    let clonedSheet = JSON.parse(JSON.stringify(sourceSheet));
+    wb.SheetNames.push(targetName);
+    wb.Sheets[targetName] = clonedSheet;
+}
+
+function writeCell(ws, row, col, value) {
+    let cellRef = XLSX.utils.encode_cell({r: row - 1, c: col - 1});
+    if (!ws[cellRef]) {
+        ws[cellRef] = { t: 'n', v: value };
+    } else {
+        ws[cellRef].v = value;
+        ws[cellRef].t = 'n';
+        delete ws[cellRef].w; // Resetta la stringa formattata vecchia
+    }
+}
+
+function removeSheetsExcept(wb, keepSet) {
+    let originalSheets = [...wb.SheetNames];
+    originalSheets.forEach(name => {
+        if (!keepSet.has(name) && wb.SheetNames.length > 1) {
+            let idx = wb.SheetNames.indexOf(name);
+            if (idx > -1) {
+                wb.SheetNames.splice(idx, 1);
+                delete wb.Sheets[name];
+            }
+        }
+    });
+}
+
+async function push_zip(z, prefix) {
+    let now = new Date();
+    let pad = (n) => String(n).padStart(2, '0');
+    let timestamp = `${pad(now.getDate())}${pad(now.getMonth()+1)}${now.getFullYear()}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    
+    let content = await z.generateAsync({type: "blob"});
+    let a = document.createElement("a");
+    a.href = URL.createObjectURL(content);
+    a.download = `${prefix}_${timestamp}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// --- GENERATORE CHECKLIST AUTOMATICA ---
+async function make_chk(m_id, p_id, g_id, c_cls) {
+    try {
+        let wb = await parseExcelFile(m_id);
+        if (!wb) return;
+        let ws = wb.Sheets[wb.SheetNames[0]];
+        let rows = XLSX.utils.sheet_to_json(ws, {defval: ''});
+        if (rows.length === 0) return;
+        
+        let uniqueFiles = new Set();
+        rows.forEach(r => {
+            let norm = {};
+            Object.keys(r).forEach(k => norm[k.trim().toUpperCase()] = r[k]);
+            let outputSheetVal = norm['OUTPUT SHEET'] || norm['OUTPUT_SHEET'] || '';
+            let cleaned = clean_n(outputSheetVal).replace(/_IC/gi, '');
+            if (cleaned !== '') uniqueFiles.add(cleaned);
+        });
+        
+        let sortedFiles = Array.from(uniqueFiles).sort();
+        document.getElementById(g_id).innerHTML = sortedFiles.map(x => 
+            `<label class="check-item"><input type="checkbox" class="${c_cls}" value="${x}" checked><span>{x}.xlsx</span></label>`
+        ).join('');
+        
+        document.getElementById(p_id).style.display = "block";
+        stampa_log(`Checklist pronta: ${sortedFiles.length} file intercettati.`);
+    } catch (e) {
+        stampa_log(`Errore Checklist: ${e.message}`);
+    }
+}
+
+async function handle_preview_1() { await make_chk("mappa1", "panel1", "grid1", "chk1"); }
+async function handle_preview_2() { await make_chk("mappa2", "panel2", "grid2", "chk2"); }
+async function handle_preview_3() { await make_chk("mappa3", "panel3", "grid3", "chk3"); }
+async function handle_preview_4() { await make_chk("mappa4", "panel4", "grid4", "chk4"); }
+async function handle_preview_5() { await make_chk("mappa5", "panel5", "grid5", "chk5"); }
+
+function sel_tutti_1() { document.querySelectorAll(".chk1").forEach(x => x.checked = true); }
+function sel_nessuno_1() { document.querySelectorAll(".chk1").forEach(x => x.checked = false); }
+function sel_tutti_2() { document.querySelectorAll(".chk2").forEach(x => x.checked = true); }
+function sel_nessuno_2() { document.querySelectorAll(".chk2").forEach(x => x.checked = false); }
+function sel_tutti_3() { document.querySelectorAll(".chk3").forEach(x => x.checked = true); }
+function sel_nessuno_3() { document.querySelectorAll(".chk3").forEach(x => x.checked = false); }
+function sel_tutti_4() { document.querySelectorAll(".chk4").forEach(x => x.checked = true); }
+function sel_nessuno_4() { document.querySelectorAll(".chk4").forEach(x => x.checked = false); }
+function sel_tutti_5() { document.querySelectorAll(".chk5").forEach(x => x.checked = true); }
+function sel_nessuno_5() { document.querySelectorAll(".chk5").forEach(x => x.checked = false); }
+
+// --- VALIDAZIONE FILE SALDI ---
+async function validate_saldi(file_id, nome_blocco, codice_atteso) {
+    try {
+        let wb = await parseExcelFile(file_id);
+        if (!wb) return;
+        let arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, defval: ''});
+        if (arr.length > 1) {
+            let valore_a2 = String(arr[1][0] || '').trim();
+            let lastIdx = arr.length - 1;
+            while (lastIdx > 0 && String(arr[lastIdx][0] || '').trim() === '') { lastIdx--; }
+            let valore_ultima = String(arr[lastIdx][0] || '').trim();
+            
+            let errori = [];
+            if (valore_a2 !== codice_atteso) errori.push(`la cella A2 è '${valore_a2}'`);
+            if (valore_ultima !== codice_atteso) errori.push(`l'ultima riga è '${valore_ultima}'`);
+            
+            if (errori.length > 0) {
+                stampa_log(`⚠️ ERRORE (${nome_blocco}): ${errori.join(' e ')}. Ci si aspettava '${codice_atteso}'!`);
+            } else {
+                stampa_log(`✅ (${nome_blocco}): File Saldi corretto (A2 e ultima riga ok per ${codice_atteso}).`);
+            }
+        } else {
+            stampa_log(`⚠️ ERRORE (${nome_blocco}): Il file non contiene abbastanza righe per la verifica.`);
+        }
+    } catch (e) {
+        stampa_log(`❌ Errore durante la verifica di ${nome_blocco}: ${e.message}`);
+    }
+}
+
+async function handle_saldi_1() { await validate_saldi("saldi1", "Attivo", "CONS2026_FSC_MP"); }
+async function handle_saldi_2() { await validate_saldi("saldi2", "Passivo", "CONS2026_FSC_MP"); }
+async function handle_saldi_3() { await validate_saldi("saldi3", "CE", "CONS2026_FSC_MP"); }
+async function handle_saldi_4() { await validate_saldi("saldi4", "Parte E", "CONS2026_FSP_MP"); }
+async function handle_saldi_5() { await validate_saldi("saldi5", "FINREP", "CONS2026_FSP_MP"); }
+
+
+// --- MOTORE DI ELABORAZIONE GENERICO (Sostituisce i blocchi Pandas) ---
+async function elaboraData(m_id, s_id, t_id, btn_id, zip_prefix, chk_cls, blocco_tipo) {
+    let b = document.getElementById(btn_id);
+    b.disabled = true;
+    stampa_log(`🚀 Avvio Tool ${zip_prefix}...`);
+    try {
+        let wbMappa = await parseExcelFile(m_id);
+        let wbSaldi = await parseExcelFile(s_id);
+        let tempBuffer = await getFileBuffer(t_id);
+        
+        if (!wbMappa || !wbSaldi || !tempBuffer) {
+            stampa_log("❌ File identificativi mancanti!");
+            b.disabled = false;
+            return;
+        }
+        
+        let rowsM = XLSX.utils.sheet_to_json(wbMappa.Sheets[wbMappa.SheetNames[0]], {defval: ''});
+        let rowsS = XLSX.utils.sheet_to_json(wbSaldi.Sheets[wbSaldi.SheetNames[0]], {defval: ''});
+        
+        // Estrazione e Normalizzazione Saldi
+        let df_saldi = rowsS.map(r => {
+            let n = {}; Object.keys(r).forEach(k => n[k.trim().toUpperCase()] = r[k]);
+            return {
+                c: clean_c(n['CONTO']),
+                v: parseFloat(n['IMPORTO IN VALUTA DI CONSO']) || 0,
+                ctp: clean_n(n['LEGAL ENTITIES CTP']),
+                d2: clean_c(n['DEST2'] || n['DEST 2']),
+                d3: clean_c(n['DEST3'] || n['DEST 3']),
+                d4: clean_c(n['DEST4'] || n['DEST 4']),
+                d5: clean_c(n['DEST5'] || n['DEST 5'])
+            };
+        });
+        
+        // Estrazione e Normalizzazione Mappa
+        let df_mappa = rowsM.map(r => {
+            let n = {}; Object.keys(r).forEach(k => n[k.trim().toUpperCase()] = r[k]);
+            return {
+                TS: clean_n(n['TARGET_SHEET']),
+                R: parseInt(n['RIGA']) || 0,
+                C: parseInt(n['COLONNA']) || 0,
+                FD: clean_n(n['OUTPUT SHEET'] || n['OUTPUT_SHEET']).replace(/_IC/gi, ''),
+                LI: clean_n(n['LORDO IC'] || n['LORDO_IC']),
+                SIGN: clean_n(n['SEGNO_HFM']),
+                c: clean_c(n['CONTO']),
+                d2: clean_c(n['DEST 2'] || n['DEST2']),
+                d3: clean_c(n['DEST 3'] || n['DEST3']),
+                d4: clean_c(n['DEST 4'] || n['DEST4']),
+                d5: clean_c(n['DEST 5'] || n['DEST5'])
+            };
+        });
+        
+        // Indicizzazione Saldi (Ottimizzazione Hash-Map rapida contro i freeze)
+        let saldiMapLordo = {};
+        let saldiMapIC = {};
+        df_saldi.forEach(row => {
+            let key = `${row.c}|${row.d2}|${row.d3}|${row.d4}|${row.d5}`;
+            saldiMapLordo[key] = (saldiMapLordo[key] || 0) + row.v;
+            if (row.ctp !== '') {
+                saldiMapIC[key] = (saldiMapIC[key] || 0) + row.v;
+            }
+        });
+        
+        // Merge & Groupby Aggregation simulato in JS
+        let aggMap = {};
+        df_mappa.forEach(mRow => {
+            let key = `${mRow.c}|${mRow.d2}|${mRow.d3}|${mRow.d4}|${mRow.d5}`;
+            let matchValue = 0;
+            let matched = false;
+            
+            if (mRow.LI === 'LORDO') {
+                if (saldiMapLordo[key] !== undefined) { matchValue = saldiMapLordo[key]; matched = true; }
+            } else if (mRow.LI === 'IC') {
+                if (saldiMapIC[key] !== undefined) { matchValue = saldiMapIC[key]; matched = true; }
+            }
+            
+            if (matched) {
+                // Per FINREP raggruppiamo anche per SEGNO_HFM
+                let groupKey = blocco_tipo === 'FINREP' ? 
+                    `${mRow.TS}|${mRow.R}|${mRow.C}|${mRow.FD}|${mRow.LI}|${mRow.SIGN}` :
+                    `${mRow.TS}|${mRow.R}|${mRow.C}|${mRow.FD}|${mRow.LI}`;
+                
+                if (!aggMap[groupKey]) {
+                    aggMap[groupKey] = { TS: mRow.TS, R: mRow.R, C: mRow.C, FD: mRow.FD, T: mRow.LI, SIGN: mRow.SIGN, v: 0 };
+                }
+                aggMap[groupKey].v += matchValue;
+            }
+        });
+        
+        let ff = Object.values(aggMap);
+        let sel = Array.from(document.querySelectorAll(`.${chk_cls}`)).filter(x => x.checked).map(x => x.value);
+        ff = ff.filter(item => sel.includes(item.FD) && item.R > 0 && item.C > 0);
+        
+        // Logica applicazione dei segni differenziata per Tab
+        ff.forEach(item => {
+            if (blocco_tipo === 'ATTIVO' || blocco_tipo === 'PASSIVO' || blocco_tipo === 'PARTEE') {
+                item.VF = Math.round(Math.abs(item.v) * 100) / 100;
+            } else if (blocco_tipo === 'CE') {
+                if (item.FD.toUpperCase().includes('SCHEMA CONTO ECONOMICO')) {
+                    item.VF = Math.round(item.v * 100) / 100;
+                } else {
+                    item.VF = Math.round(Math.abs(item.v) * 100) / 100;
+                }
+            } else if (blocco_tipo === 'FINREP') {
+                let base_val = item.v;
+                if (item.SIGN === '+') base_val = Math.abs(item.v);
+                else if (item.SIGN === '-') base_val = Math.abs(item.v) * -1;
+                
+                if (item.FD.toUpperCase().trim() === 'F_14' && (item.R >= 5 && item.R <= 15) && (item.C >= 7 && item.C <= 13)) {
+                    base_val = base_val * -1;
+                }
+                item.VF = Math.round(base_val * 100) / 100;
+            }
+        });
+        
+        ff = ff.filter(item => item.VF !== 0);
+        if (ff.length === 0) {
+            stampa_log("⚠️ Nessun record incrociato valido trovato.");
+        }
+        
+        let zip = new JSZip();
+        let folder = zip.folder(`OUTPUT_${zip_prefix}`);
+        let uniqueFDs = Array.from(new Set(ff.map(x => x.FD))).sort();
+        
+        // Generazione fisica dei file Excel tramite i template
+        for (let target of uniqueFDs) {
+            let wbTemp = XLSX.read(new Uint8Array(tempBuffer), {type: 'array'});
+            let sub = ff.filter(x => x.FD === target);
+            
+            let rs = {};
+            wbTemp.SheetNames.forEach(name => rs[name.trim().toUpperCase()] = name);
+            let keep = new Set();
+            
+            sub.forEach(item => {
+                let base = item.TS.toUpperCase();
+                if (rs[base]) {
+                    let officialName = rs[base];
+                    keep.add(officialName);
+                    if (item.T === 'IC') {
+                        let nic = `${officialName}_IC`;
+                        keep.add(nic);
+                        if (!wbTemp.Sheets[nic]) copyWorksheet(wbTemp, officialName, nic);
+                    }
+                }
+            });
+            
+            sub.forEach(item => {
+                let base = item.TS.toUpperCase();
+                if (rs[base]) {
+                    let officialName = rs[base];
+                    let targetSheetName = (item.T === 'IC') ? `${officialName}_IC` : officialName;
+                    if (wbTemp.Sheets[targetSheetName]) {
+                        writeCell(wbTemp.Sheets[targetSheetName], item.R, item.C, item.VF);
+                    }
+                }
+            });
+            
+            removeSheetsExcept(wbTemp, keep);
+            let wbOut = XLSX.write(wbTemp, {bookType: 'xlsx', type: 'array'});
+            folder.file(`${target}.xlsx`, wbOut);
+            stampa_log(`📦 Creato nel pacchetto: ${target}.xlsx (${sub.length} formule processate)`);
+        }
+        
+        await push_zip(zip, `OUTPUT_${zip_prefix}`);
+        stampa_log(`✅ ${zip_prefix} Elaborazione Completata con successo.`);
+    } catch (ex) {
+        stampa_log(`❌ Errore Critico durante il processo: ${ex.message}`);
+        console.error(ex);
+    } finally {
+        b.disabled = false;
+    }
+}
+
+// Funzioni di attivazione associate ai click dei bottoni HTML
+async function run_attivo() { await elaboraData("mappa1", "saldi1", "temp1", "btn1", "ATTIVO", "chk1", "ATTIVO"); }
+async function run_passivo() { await elaboraData("mappa2", "saldi2", "temp2", "btn2", "PASSIVO", "chk2", "PASSIVO"); }
+async function run_ce() { await elaboraData("mappa3", "saldi3", "temp3", "btn3", "CE", "chk3", "CE"); }
+async function run_partee() { await elaboraData("mappa4", "saldi4", "temp4", "btn4", "PARTE_E", "chk4", "PARTEE"); }
+async function run_finrep() { await elaboraData("mappa5", "saldi5", "temp5", "btn5", "FINREP", "chk5", "FINREP"); }
+</script>
+
+</body>
+</html>
