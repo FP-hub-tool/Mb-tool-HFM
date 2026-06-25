@@ -36,6 +36,19 @@
         .btn:disabled { background: #cbd5e1 !important; cursor: not-allowed; }
         
         .log-container { background: #1e293b; color: #f8fafc; border-radius: 6px; padding: 15px; max-height: 350px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; margin-top: 20px; white-space: pre-wrap; border: 1px solid #334155; }
+
+        /* --- STILE SCHERMATA DI CARICAMENTO --- */
+        #pyscript-loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #1e293b; color: white; z-index: 99999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid #334155; border-top: 5px solid #10b981;
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
     
     <script>
@@ -48,6 +61,12 @@
     </script>
 </head>
 <body>
+
+<div id="pyscript-loading-overlay">
+    <div class="spinner"></div>
+    <h2>Inizializzazione MPS-MB Reporting Hub...</h2>
+    <p style="color: #94a3b8; margin-top: 8px; font-size: 0.9em;">Caricamento dei motori di analisi (Pandas & OpenPyXL) in corso. Attendere qualche secondo.</p>
+</div>
 
 <nav class="navbar">
     <div class="nav-logo">💼 MPS-MB HUB</div>
@@ -150,7 +169,6 @@ async def get_f(id):
     buf = await el.files.item(0).arrayBuffer()
     return io.BytesIO(bytes(js.Uint8Array.new(buf)))
 
-# Funzione per estrarre colonne in sicurezza evitando i KeyError
 def safe_col(df, col_names):
     if isinstance(col_names, str): 
         col_names = [col_names]
@@ -159,14 +177,12 @@ def safe_col(df, col_names):
             return df[c]
     return pd.Series([''] * len(df))
 
-# Pulizia Codici Conto e Destinazioni (Rimuove gli zeri decimali ed i "nan" testuali di Pandas)
 def clean_c(s):
     res = s.fillna('').astype(str).str.strip().str.upper()
     res = res.replace(['NAN', 'NONE', 'NAT', 'NULL'], '')
     res = res.str.replace(r'\.0$', '', regex=True)
     return res
 
-# Pulizia Nomi File e Nomi Fogli (NON rimuove i decimali per salvaguardare 1.10)
 def clean_n(s):
     res = s.fillna('').astype(str).str.strip().str.upper()
     res = res.replace(['NAN', 'NONE', 'NAT', 'NULL'], '')
@@ -187,6 +203,9 @@ async def push_zip(z, prefix):
     js.document.body.removeChild(a)
 
 stampa_log("Sistema Caricato ✅. Pronto per elaborare.")
+
+# --- RIMOZIONE SCHERMATA DI CARICAMENTO AD AVVIO COMPLETATO ---
+document.getElementById("pyscript-loading-overlay").style.display = "none"
 
 # --- GENERATORE CHECKLIST ---
 async def make_chk(m_id, p_id, g_id, c_cls):
@@ -233,31 +252,17 @@ def sel_tutti_5(e):
 def sel_nessuno_5(e): 
     for x in document.querySelectorAll(".chk5"): x.checked = False
 
-# --- VALIDAZIONE ISTANTANEA FILE SALDI ---
-# --- VALIDAZIONE ISTANTANEA FILE SALDI ---
 async def validate_saldi(file_id, nome_blocco, codice_atteso):
     try:
         st = await get_f(file_id)
-        if not st: 
-            return
-            
-        # Leggiamo SENZA intestazione (header=None) e SOLO la Colonna A (usecols=[0])
+        if not st: return
         df_check = pd.read_excel(st, header=None, usecols=[0]) 
-        
-        # Controlliamo che il file abbia almeno 2 righe
         if len(df_check) > 1:
-            # Estraiamo il valore della cella A2 (indice 1 in Pandas)
             valore_a2 = str(df_check.iloc[1, 0]).strip()
-            
-            # Estraiamo il valore dell'ULTIMA riga della colonna A (indice -1 in Pandas)
             valore_ultima = str(df_check.iloc[-1, 0]).strip()
-            
             errori = []
-            if valore_a2 != codice_atteso:
-                errori.append(f"la cella A2 è '{valore_a2}'")
-            if valore_ultima != codice_atteso:
-                errori.append(f"l'ultima riga è '{valore_ultima}'")
-                
+            if valore_a2 != codice_atteso: errori.append(f"la cella A2 è '{valore_a2}'")
+            if valore_ultima != codice_atteso: errori.append(f"l'ultima riga è '{valore_ultima}'")
             if errori:
                 messaggio = " e ".join(errori)
                 stampa_log(f"⚠️ ERRORE ({nome_blocco}): {messaggio}. Ci si aspettava '{codice_atteso}'!")
@@ -265,17 +270,14 @@ async def validate_saldi(file_id, nome_blocco, codice_atteso):
                 stampa_log(f"✅ ({nome_blocco}): File Saldi corretto (A2 e ultima riga ok per {codice_atteso}).")
         else:
             stampa_log(f"⚠️ ERRORE ({nome_blocco}): Il file non contiene abbastanza righe per effettuare il controllo!")
-            
     except Exception as e:
         stampa_log(f"❌ Errore durante la lettura di verifica in {nome_blocco}: {e}")
 
-# Qui associamo il codice atteso corretto ad ogni blocco
 async def handle_saldi_1(e): await validate_saldi("saldi1", "Attivo", "CONS2026_FSC_MP")
 async def handle_saldi_2(e): await validate_saldi("saldi2", "Passivo", "CONS2026_FSC_MP")
 async def handle_saldi_3(e): await validate_saldi("saldi3", "CE", "CONS2026_FSC_MP")
 async def handle_saldi_4(e): await validate_saldi("saldi4", "Parte E", "CONS2026_FSP_MP")
 async def handle_saldi_5(e): await validate_saldi("saldi5", "FINREP", "CONS2026_FSP_MP")
-
 
 # --- BLOCCO 1: ATTIVO ---
 async def run_attivo(e):
@@ -286,16 +288,13 @@ async def run_attivo(e):
         m_s = await get_f("mappa1")
         s_s = await get_f("saldi1")
         t_s = await get_f("temp1")
-        
         if not m_s or not s_s or not t_s:
             stampa_log("❌ File mancanti!")
             b.disabled = False
             return
-            
         dm = pd.read_excel(m_s, dtype=str)
         ds = pd.read_excel(s_s, dtype=str)
         tb = t_s.getvalue()
-        
         dm.columns = [str(c).upper().strip() for c in dm.columns]
         ds.columns = [str(c).upper().strip() for c in ds.columns]
         
@@ -308,7 +307,6 @@ async def run_attivo(e):
             'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
             'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
         })
-        
         df_mappa = pd.DataFrame({
             'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
             'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
@@ -324,30 +322,23 @@ async def run_attivo(e):
         
         l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         l['T'] = 'LORDO'
-        
         i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         i['T'] = 'IC'
         
         ff = pd.concat([l, i])
         ff['VF'] = ff['v'].abs().round(2)
-        
         sel = [x.value for x in document.querySelectorAll(".chk1") if x.checked]
-        
-        # Filtro per le celle compilabili correttamente
         ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
         
-        if ff.empty:
-            stampa_log("⚠️ Nessun valore incrociato tra i file per la compilazione. Il file ZIP generato sarà vuoto.")
+        if ff.empty: stampa_log("⚠️ Nessun valore incrociato tra i file.")
         
         jz = js.JSZip.new()
         folder = jz.folder("OUTPUT_ATTIVO")
-        
         for target in sorted(ff['FD'].unique()):
             wb = openpyxl.load_workbook(io.BytesIO(tb))
             sub = ff[ff['FD'] == target]
             rs = {str(s).strip().upper(): s for s in wb.sheetnames}
             keep = set()
-            
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
@@ -356,32 +347,23 @@ async def run_attivo(e):
                     if r['T'] == 'IC':
                         nic = f"{n}_IC"
                         keep.add(nic)
-                        if nic not in wb.sheetnames:
-                            wb.copy_worksheet(wb[n]).title = nic
-                            
+                        if nic not in wb.sheetnames: wb.copy_worksheet(wb[n]).title = nic
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
                     t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
-                    if t_sh in wb.sheetnames:
-                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
-                    
+                    if t_sh in wb.sheetnames: wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
             for s in list(wb.sheetnames):
-                if s not in keep and len(wb.sheetnames) > 1:
-                    wb.remove(wb[s])
-                    
+                if s not in keep and len(wb.sheetnames) > 1: wb.remove(wb[s])
             buf = io.BytesIO()
             wb.save(buf)
             folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
-            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            stampa_log(f"📦 Creato: {target}.xlsx")
             
         await push_zip(jz, "OUTPUT_ATTIVO")
         stampa_log("✅ Attivo Completato.")
-    except Exception as ex: 
-        stampa_log(f"❌ Errore Attivo: {ex}")
-    finally: 
-        b.disabled = False
-
+    except Exception as ex: stampa_log(f"❌ Errore Attivo: {ex}")
+    finally: b.disabled = False
 
 # --- BLOCCO 2: PASSIVO ---
 async def run_passivo(e):
@@ -392,16 +374,13 @@ async def run_passivo(e):
         m_s = await get_f("mappa2")
         s_s = await get_f("saldi2")
         t_s = await get_f("temp2")
-        
         if not m_s or not s_s or not t_s:
             stampa_log("❌ File mancanti!")
             b.disabled = False
             return
-            
         dm = pd.read_excel(m_s, dtype=str)
         ds = pd.read_excel(s_s, dtype=str)
         tb = t_s.getvalue()
-        
         dm.columns = [str(c).upper().strip() for c in dm.columns]
         ds.columns = [str(c).upper().strip() for c in ds.columns]
         
@@ -414,7 +393,6 @@ async def run_passivo(e):
             'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
             'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
         })
-        
         df_mappa = pd.DataFrame({
             'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
             'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
@@ -430,28 +408,23 @@ async def run_passivo(e):
         
         l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         l['T'] = 'LORDO'
-        
         i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         i['T'] = 'IC'
         
         ff = pd.concat([l, i])
         ff['VF'] = ff['v'].apply(lambda x: x*-1 if x < 0 else x).round(2)
-        
         sel = [x.value for x in document.querySelectorAll(".chk2") if x.checked]
         ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
         
-        if ff.empty:
-            stampa_log("⚠️ Nessun dato da incrociare trovato.")
-            
+        if ff.empty: stampa_log("⚠️ Nessun dato trovato.")
+        
         jz = js.JSZip.new()
         folder = jz.folder("OUTPUT_PASSIVO")
-        
         for target in sorted(ff['FD'].unique()):
             wb = openpyxl.load_workbook(io.BytesIO(tb))
             sub = ff[ff['FD'] == target]
             rs = {str(s).strip().upper(): s for s in wb.sheetnames}
             keep = set()
-            
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
@@ -460,31 +433,23 @@ async def run_passivo(e):
                     if r['T'] == 'IC':
                         nic = f"{n}_IC"
                         keep.add(nic)
-                        if nic not in wb.sheetnames:
-                            wb.copy_worksheet(wb[n]).title = nic
-                            
+                        if nic not in wb.sheetnames: wb.copy_worksheet(wb[n]).title = nic
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
                     t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
-                    if t_sh in wb.sheetnames:
-                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
-                    
+                    if t_sh in wb.sheetnames: wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
             for s in list(wb.sheetnames):
-                if s not in keep and len(wb.sheetnames) > 1:
-                    wb.remove(wb[s])
-                    
+                if s not in keep and len(wb.sheetnames) > 1: wb.remove(wb[s])
             buf = io.BytesIO()
             wb.save(buf)
             folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
-            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            stampa_log(f"📦 Creato: {target}.xlsx")
             
         await push_zip(jz, "OUTPUT_PASSIVO")
         stampa_log("✅ Passivo Completato.")
-    except Exception as ex: 
-        stampa_log(f"❌ Errore Passivo: {ex}")
-    finally: 
-        b.disabled = False
+    except Exception as ex: stampa_log(f"❌ Errore Passivo: {ex}")
+    finally: b.disabled = False
 
 # --- BLOCCO 3: CE ---
 async def run_ce(e):
@@ -495,16 +460,13 @@ async def run_ce(e):
         m_s = await get_f("mappa3")
         s_s = await get_f("saldi3")
         t_s = await get_f("temp3")
-        
         if not m_s or not s_s or not t_s:
             stampa_log("❌ File mancanti!")
             b.disabled = False
             return
-            
         dm = pd.read_excel(m_s, dtype=str)
         ds = pd.read_excel(s_s, dtype=str)
         tb = t_s.getvalue()
-        
         dm.columns = [str(c).upper().strip() for c in dm.columns]
         ds.columns = [str(c).upper().strip() for c in ds.columns]
         
@@ -517,7 +479,6 @@ async def run_ce(e):
             'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
             'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
         })
-        
         df_mappa = pd.DataFrame({
             'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
             'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
@@ -533,33 +494,26 @@ async def run_ce(e):
         
         l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         l['T'] = 'LORDO'
-        
         i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         i['T'] = 'IC'
         
         ff = pd.concat([l, i])
-        
-        # --- NUOVA LOGICA DEI SEGNI ---
         ff['VF'] = ff['v'].abs().round(2)
         mask_schema = ff['FD'].str.contains('SCHEMA CONTO ECONOMICO', case=False, na=False)
         ff.loc[mask_schema, 'VF'] = ff.loc[mask_schema, 'v'].round(2)
-        # ------------------------------
         
         sel = [x.value for x in document.querySelectorAll(".chk3") if x.checked]
         ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
         
-        if ff.empty:
-            stampa_log("⚠️ Nessun dato da incrociare trovato.")
-            
+        if ff.empty: stampa_log("⚠️ Nessun dato trovato.")
+        
         jz = js.JSZip.new()
         folder = jz.folder("OUTPUT_CE")
-        
         for target in sorted(ff['FD'].unique()):
             wb = openpyxl.load_workbook(io.BytesIO(tb))
             sub = ff[ff['FD'] == target]
             rs = {str(s).strip().upper(): s for s in wb.sheetnames}
             keep = set()
-            
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
@@ -568,31 +522,23 @@ async def run_ce(e):
                     if r['T'] == 'IC':
                         nic = f"{n}_IC"
                         keep.add(nic)
-                        if nic not in wb.sheetnames:
-                            wb.copy_worksheet(wb[n]).title = nic
-                            
+                        if nic not in wb.sheetnames: wb.copy_worksheet(wb[n]).title = nic
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
                     t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
-                    if t_sh in wb.sheetnames:
-                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
-                    
+                    if t_sh in wb.sheetnames: wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
             for s in list(wb.sheetnames):
-                if s not in keep and len(wb.sheetnames) > 1:
-                    wb.remove(wb[s])
-                    
+                if s not in keep and len(wb.sheetnames) > 1: wb.remove(wb[s])
             buf = io.BytesIO()
             wb.save(buf)
             folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
-            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            stampa_log(f"📦 Creato: {target}.xlsx")
             
         await push_zip(jz, "OUTPUT_CE")
         stampa_log("✅ CE Completato.")
-    except Exception as ex: 
-        stampa_log(f"❌ Errore CE: {ex}")
-    finally: 
-        b.disabled = False
+    except Exception as ex: stampa_log(f"❌ Errore CE: {ex}")
+    finally: b.disabled = False
         
 # --- BLOCCO 4: PARTE E ---
 async def run_partee(e):
@@ -603,16 +549,13 @@ async def run_partee(e):
         m_s = await get_f("mappa4")
         s_s = await get_f("saldi4")
         t_s = await get_f("temp4")
-        
         if not m_s or not s_s or not t_s:
             stampa_log("❌ File mancanti!")
             b.disabled = False
             return
-            
         dm = pd.read_excel(m_s, dtype=str)
         ds = pd.read_excel(s_s, dtype=str)
         tb = t_s.getvalue()
-        
         dm.columns = [str(c).upper().strip() for c in dm.columns]
         ds.columns = [str(c).upper().strip() for c in ds.columns]
         
@@ -625,7 +568,6 @@ async def run_partee(e):
             'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
             'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
         })
-        
         df_mappa = pd.DataFrame({
             'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
             'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
@@ -641,28 +583,23 @@ async def run_partee(e):
         
         l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         l['T'] = 'LORDO'
-        
         i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD']).agg({'v':'sum'}).reset_index()
         i['T'] = 'IC'
         
         ff = pd.concat([l, i])
         ff['VF'] = ff['v'].abs().round(2)
-        
         sel = [x.value for x in document.querySelectorAll(".chk4") if x.checked]
         ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
         
-        if ff.empty:
-            stampa_log("⚠️ Nessun dato da incrociare trovato.")
-            
+        if ff.empty: stampa_log("⚠️ Nessun dato trovato.")
+        
         jz = js.JSZip.new()
         folder = jz.folder("OUTPUT_PARTE_E")
-        
         for target in sorted(ff['FD'].unique()):
             wb = openpyxl.load_workbook(io.BytesIO(tb))
             sub = ff[ff['FD'] == target]
             rs = {str(s).strip().upper(): s for s in wb.sheetnames}
             keep = set()
-            
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
@@ -671,31 +608,23 @@ async def run_partee(e):
                     if r['T'] == 'IC':
                         nic = f"{n}_IC"
                         keep.add(nic)
-                        if nic not in wb.sheetnames:
-                            wb.copy_worksheet(wb[n]).title = nic
-                            
+                        if nic not in wb.sheetnames: wb.copy_worksheet(wb[n]).title = nic
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
                     t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
-                    if t_sh in wb.sheetnames:
-                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
-                    
+                    if t_sh in wb.sheetnames: wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
             for s in list(wb.sheetnames):
-                if s not in keep and len(wb.sheetnames) > 1:
-                    wb.remove(wb[s])
-                    
+                if s not in keep and len(wb.sheetnames) > 1: wb.remove(wb[s])
             buf = io.BytesIO()
             wb.save(buf)
             folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
-            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            stampa_log(f"📦 Creato: {target}.xlsx")
             
         await push_zip(jz, "OUTPUT_PARTE_E")
         stampa_log("✅ Parte E Completata.")
-    except Exception as ex: 
-        stampa_log(f"❌ Errore Parte E: {ex}")
-    finally: 
-        b.disabled = False
+    except Exception as ex: stampa_log(f"❌ Errore Parte E: {ex}")
+    finally: b.disabled = False
 
 # --- BLOCCO 5: FINREP ---
 async def run_finrep(e):
@@ -706,16 +635,13 @@ async def run_finrep(e):
         m_s = await get_f("mappa5")
         s_s = await get_f("saldi5")
         t_s = await get_f("temp5")
-        
         if not m_s or not s_s or not t_s:
             stampa_log("❌ File mancanti!")
             b.disabled = False
             return
-            
         dm = pd.read_excel(m_s, dtype=str)
         ds = pd.read_excel(s_s, dtype=str)
         tb = t_s.getvalue()
-        
         dm.columns = [str(c).upper().strip() for c in dm.columns]
         ds.columns = [str(c).upper().strip() for c in ds.columns]
         
@@ -728,7 +654,6 @@ async def run_finrep(e):
             'd4': clean_c(safe_col(ds, ['DEST4', 'DEST 4'])), 
             'd5': clean_c(safe_col(ds, ['DEST5', 'DEST 5']))
         })
-        
         df_mappa = pd.DataFrame({
             'TS': clean_n(safe_col(dm, 'TARGET_SHEET')), 
             'R': pd.to_numeric(safe_col(dm, 'RIGA'), errors='coerce').fillna(0).astype(int), 
@@ -745,7 +670,6 @@ async def run_finrep(e):
         
         l = df_mappa[df_mappa['LI'] == 'LORDO'].merge(df_saldi, on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD','SIGN']).agg({'v':'sum'}).reset_index()
         l['T'] = 'LORDO'
-        
         i = df_mappa[df_mappa['LI'] == 'IC'].merge(df_saldi[df_saldi['ctp'] != ''], on=['c','d2','d3','d4','d5'], how='inner').groupby(['TS','R','C','FD','SIGN']).agg({'v':'sum'}).reset_index()
         i['T'] = 'IC'
         
@@ -756,29 +680,23 @@ async def run_finrep(e):
             if s == '+': base_val = abs(v)
             elif s == '-': base_val = abs(v) * -1
             else: base_val = v
-            
             if str(r['FD']).upper().strip() == 'F_14' and (5 <= int(r['R']) <= 15) and (7 <= int(r['C']) <= 13):
                 return base_val * -1
-                
             return base_val
             
         ff['VF'] = ff.apply(f_sign, axis=1).round(2)
-        
         sel = [x.value for x in document.querySelectorAll(".chk5") if x.checked]
         ff = ff[(ff['FD'].isin(sel)) & (ff['R'] > 0) & (ff['C'] > 0) & (ff['VF'] != 0)]
         
-        if ff.empty:
-            stampa_log("⚠️ Nessun dato da incrociare trovato.")
-            
+        if ff.empty: stampa_log("⚠️ Nessun dato trovato.")
+        
         jz = js.JSZip.new()
         folder = jz.folder("OUTPUT_FINREP")
-        
         for target in sorted(ff['FD'].unique()):
             wb = openpyxl.load_workbook(io.BytesIO(tb))
             sub = ff[ff['FD'] == target]
             rs = {str(s).strip().upper(): s for s in wb.sheetnames}
             keep = set()
-            
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
@@ -787,31 +705,23 @@ async def run_finrep(e):
                     if r['T'] == 'IC':
                         nic = f"{n}_IC"
                         keep.add(nic)
-                        if nic not in wb.sheetnames:
-                            wb.copy_worksheet(wb[n]).title = nic
-                            
+                        if nic not in wb.sheetnames: wb.copy_worksheet(wb[n]).title = nic
             for _, r in sub.iterrows():
                 base = str(r['TS']).upper()
                 if base in rs:
                     t_sh = f"{rs[base]}_IC" if r['T'] == 'IC' else rs[base]
-                    if t_sh in wb.sheetnames:
-                        wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
-                    
+                    if t_sh in wb.sheetnames: wb[t_sh].cell(row=int(r['R']), column=int(r['C'])).value = float(r['VF'])
             for s in list(wb.sheetnames):
-                if s not in keep and len(wb.sheetnames) > 1:
-                    wb.remove(wb[s])
-                    
+                if s not in keep and len(wb.sheetnames) > 1: wb.remove(wb[s])
             buf = io.BytesIO()
             wb.save(buf)
             folder.file(f"{target}.xlsx", js.Uint8Array.new(buf.getvalue()))
-            stampa_log(f"📦 Creato nel pacchetto: {target}.xlsx ({len(sub)} righe processate)")
+            stampa_log(f"📦 Creato: {target}.xlsx")
             
         await push_zip(jz, "OUTPUT_FINREP")
         stampa_log("✅ FINREP Completato.")
-    except Exception as ex: 
-        stampa_log(f"❌ Errore FINREP: {ex}")
-    finally: 
-        b.disabled = False
+    except Exception as ex: stampa_log(f"❌ Errore FINREP: {ex}")
+    finally: b.disabled = False
 
 </py-script>
 
